@@ -6,11 +6,21 @@ import com.hoho.android.usbserial.driver.UsbSerialPort;
 import java.io.IOException;
 
 public class UsbSerialDevice {
-    private UsbSerialPort port;
-    private static final int SERIAL_TIMEOUT = 1000;
+    public UsbSerialPort port;
+    private static final int SERIAL_TIMEOUT = 30 * 1000;
 
     public UsbSerialDevice(UsbSerialPort port) {
         this.port = port;
+    }
+
+    public byte[] hexStringToByteArray(String s) {
+        byte[] b = new byte[s.length() / 2];
+        for (int i = 0; i < b.length; i++) {
+            int index = i * 2;
+            int v = Integer.parseInt(s.substring(index, index + 2), 16);
+            b[i] = (byte) v;
+        }
+        return b;
     }
 
     public void writeAsync(String value, Promise promise) {
@@ -18,7 +28,8 @@ public class UsbSerialDevice {
         if (port != null) {
 
             try {
-                port.write(value.getBytes(), SERIAL_TIMEOUT);
+                byte b[] = hexStringToByteArray(value);
+                port.write(b, SERIAL_TIMEOUT);
 
                 promise.resolve(null);
             } catch (IOException e) {
