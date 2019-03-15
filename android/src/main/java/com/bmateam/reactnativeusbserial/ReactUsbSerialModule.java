@@ -45,6 +45,12 @@ public class ReactUsbSerialModule extends ReactContextBaseJavaModule {
 
     private SerialInputOutputManager mSerialIoManager;
 
+    private byte[] dataBuffer = new byte[0];
+
+    private final int TELEGRAM_START = 104;
+
+    private final int TELEGRAM_END = 22;
+
     private final SerialInputOutputManager.Listener mListener =
             new SerialInputOutputManager.Listener() {
                 @Override
@@ -161,16 +167,48 @@ public class ReactUsbSerialModule extends ReactContextBaseJavaModule {
                 .emit(eventName, params);
     }
 
+    private byte[] findTelegram(byte[] buffer) {
+        for (int i = 0; i < buffer.length; i += 1) {
+            int currentByte = buffer[i] & 0xff;
+            if (currentByte == TELEGRAM_START && i + 1 < buffer.length) {
+                int telegramLength = buffer[i + 1] & 0xff;
+                int telegramEndIndex = i + telegramLength + 2; // Length + RSSI + End byte
+
+                if (buffer.length > i + telegramEndIndex) {
+                    int endByte = buffer[telegramEndIndex] & 0xff;
+                    if (endByte == TELEGRAM_END) {
+                        byte[] telegram = Arrays.copyOfRange(buffer, i, telegramEndIndex + 1);
+                        dataBuffer = Arrays.copyOfRange(buffer, telegramEndIndex + 1, buffer.length);
+                        return telegram;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    public static byte[] joinByteArrays(final byte[] array1, byte[] array2) {
+        byte[] joinedArray = Arrays.copyOf(array1, array1.length + array2.length);
+        System.arraycopy(array2, 0, joinedArray, array1.length, array2.length);
+        return joinedArray;
+    }
+
     public void emitNewData(byte[] data) {
         if (REACTCONTEXT != null) {
-            WritableMap params = Arguments.createMap();
-            Formatter formatter = new Formatter();
-            for (byte b : data) {
-                formatter.format("%02x", b);
+            dataBuffer = joinByteArrays(dataBuffer, data);
+            byte[] newTelegram = findTelegram(dataBuffer);
+
+            if (newTelegram != null) {
+                WritableMap params = Arguments.createMap();
+                Formatter formatter = new Formatter();
+                for (byte b : newTelegram) {
+                    formatter.format("%02x", b & 0xff);
+                }
+                String hex = formatter.toString();
+                params.putString("data", hex);
+                sendEvent(REACTCONTEXT, "newData", params);
             }
-            String hex = formatter.toString();
-            params.putString("data", hex);
-            sendEvent(REACTCONTEXT, "newData", params);
         }
     }
 
